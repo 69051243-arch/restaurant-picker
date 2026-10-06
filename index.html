@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Restaurant & Food Picker</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#111827',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Outfit', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Outfit', 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphism Card Style */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Glowing Effects */
+        .glow-btn {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .glow-btn::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: -2px; right: -2px; bottom: -2px;
+            background: linear-gradient(45deg, #8b5cf6, #06b6d4, #10b981, #f59e0b);
+            border-radius: inherit;
+            z-index: -1;
+            filter: blur(10px);
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
+        }
+        .glow-btn:hover::before {
+            opacity: 1;
+        }
+        .glow-btn:disabled::before {
+            display: none;
+        }
+
+        /* Wheel Pointer Arrow Pulse */
+        @keyframes pointerBounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(6px); }
+        }
+        .animate-pointer {
+            animation: pointerBounce 1.5s infinite ease-in-out;
+        }
+
+        /* Canvas Confetti Layer */
+        #confetti-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Modal Scale Animation */
+        @keyframes modalPop {
+            0% { transform: scale(0.85); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-modal {
+            animation: modalPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Custom Scrollbar for Dish List */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.8);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between relative selection:bg-violet-500 selection:text-white">
+
+    <!-- Confetti Layer -->
+    <canvas id="confetti-canvas"></canvas>
+
+    <!-- Header -->
+    <header class="w-full border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3 text-center sm:text-left">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 via-cyan-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                    <i class="fa-solid font-bold fa-utensils text-white text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-extrabold bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent tracking-tight">
+                        Random Food Picker
+                    </h1>
+                    <p class="text-xs text-slate-400 font-medium">Can't decide what to eat? Let the wheel choose!</p>
+                </div>
+            </div>
+
+            <!-- Controls (Audio & Reset) -->
+            <div class="flex items-center space-x-3">
+                <button id="audio-toggle-btn" class="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700/60 transition-all duration-200">
+                    <i id="audio-icon" class="fa-solid fa-volume-high text-cyan-400 text-sm"></i>
+                    <span id="audio-status-text">Sound ON</span>
+                </button>
+                <button id="top-reset-btn" title="Reset to Default Thai Street Food" class="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700/60 transition-all duration-200">
+                    <i class="fa-solid fa-rotate-right text-emerald-400 text-sm"></i>
+                    <span>Reset Defaults</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            <!-- LEFT COLUMN: Interactive Canvas Spin Wheel -->
+            <div class="lg:col-span-7 flex flex-col items-center">
+                <div class="glass-card w-full rounded-2xl p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
+                    
+                    <!-- Glow background accent circles -->
+                    <div class="absolute -top-24 -left-24 w-64 h-64 bg-violet-600/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div class="absolute -bottom-24 -right-24 w-64 h-64 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <div class="w-full flex items-center justify-between mb-4">
+                        <span class="text-xs font-bold uppercase tracking-wider text-violet-400 bg-violet-950/60 border border-violet-800/50 px-3 py-1 rounded-full">
+                            <i class="fa-solid fa-compass spin-slow mr-1"></i> Interactive Wheel
+                        </span>
+                        <span id="active-count-badge" class="text-xs font-semibold text-slate-400">
+                            8 Active Options
+                        </span>
+                    </div>
+
+                    <!-- Wheel Container -->
+                    <div class="relative my-4 flex items-center justify-center max-w-full">
+                        <!-- Top Pointer Arrow -->
+                        <div class="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-pointer drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">
+                            <div class="w-0 h-0 border-l-[16px] border-l-transparent border-r-[16px] border-r-transparent border-t-[30px] border-t-rose-500"></div>
+                            <div class="w-2 h-2 bg-white rounded-full absolute -top-7 left-1/2 -translate-x-1/2 shadow-inner"></div>
+                        </div>
+
+                        <!-- Canvas Wheel -->
+                        <div class="p-3 bg-slate-900/90 rounded-full border-2 border-slate-700/60 shadow-2xl relative">
+                            <canvas id="wheel-canvas" width="440" height="440" class="w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] rounded-full cursor-pointer transition-transform duration-100"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Wheel Action Controls -->
+                    <div class="w-full max-w-md mt-6 flex flex-col sm:flex-row gap-3">
+                        <button id="spin-btn" class="glow-btn flex-1 py-3.5 px-6 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-base shadow-xl flex items-center justify-center space-x-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-arrows-spin text-lg"></i>
+                            <span>SPIN WHEEL</span>
+                        </button>
+                        
+                        <button id="quick-pick-btn" class="py-3.5 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-sm flex items-center justify-center space-x-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-bolt text-amber-400"></i>
+                            <span>Quick Pick</span>
+                        </button>
+                    </div>
+
+                    <p id="wheel-status-note" class="text-xs text-slate-400 mt-4 text-center">
+                        Click <strong class="text-slate-200">SPIN WHEEL</strong> or click directly on the wheel to spin!
+                    </p>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Dish Options & Custom Management -->
+            <div class="lg:col-span-5 flex flex-col gap-6">
+                <div class="glass-card rounded-2xl p-6 sm:p-7 flex flex-col h-full">
+                    
+                    <div class="flex items-center justify-between mb-5">
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-cyan-400"></i> Food & Restaurant List
+                        </h2>
+                        <span id="total-count-badge" class="text-xs text-slate-400 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg">
+                            8 Items
+                        </span>
+                    </div>
+
+                    <!-- Add Item Input Form -->
+                    <form id="add-dish-form" class="flex gap-2 mb-4">
+                        <div class="relative flex-1">
+                            <input type="text" id="dish-input" placeholder="Add custom dish or restaurant..." 
+                                class="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all">
+                            <i class="fa-solid fa-plus text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 text-xs"></i>
+                        </div>
+                        <button type="submit" class="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center shrink-0">
+                            Add
+                        </button>
+                    </form>
+
+                    <!-- Quick Action Buttons -->
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800 text-xs">
+                        <div class="flex gap-2">
+                            <button id="select-all-btn" class="text-slate-400 hover:text-cyan-400 transition-colors font-medium">
+                                <i class="fa-regular fa-square-check mr-1"></i>Select All
+                            </button>
+                            <span class="text-slate-700">|</span>
+                            <button id="deselect-all-btn" class="text-slate-400 hover:text-rose-400 transition-colors font-medium">
+                                <i class="fa-regular fa-square mr-1"></i>Deselect All
+                            </button>
+                        </div>
+                        <button id="clear-all-btn" class="text-slate-400 hover:text-rose-500 transition-colors font-medium">
+                            <i class="fa-solid fa-trash-can mr-1"></i>Clear All
+                        </button>
+                    </div>
+
+                    <!-- Dish List Container -->
+                    <ul id="dish-list" class="space-y-2 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar flex-grow">
+                        <!-- Dynamic dish item rows rendered here -->
+                    </ul>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Winner Modal Overlay -->
+    <div id="winner-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden transition-opacity duration-300">
+        <div class="glass-card max-w-md w-full rounded-2xl p-6 sm:p-8 text-center relative border border-slate-700/80 shadow-2xl animate-modal overflow-hidden">
+            
+            <!-- Confetti Glow Background -->
+            <div class="absolute -top-20 left-1/2 -translate-x-1/2 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- Close Button -->
+            <button id="close-modal-btn" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <!-- Winner Icon Header -->
+            <div class="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-amber-500 via-emerald-500 to-cyan-400 p-0.5 shadow-xl shadow-emerald-500/20">
+                <div class="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-4xl" id="winner-emoji">
+                    🍜
+                </div>
+            </div>
+
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-3 py-1 rounded-full">
+                Today's Winner
+            </span>
+
+            <h2 id="winner-title" class="text-2xl sm:text-3xl font-extrabold text-white mt-3 mb-2 leading-tight">
+                Pad Kra Pao
+            </h2>
+            <p class="text-xs text-slate-400 mb-6">
+                Decision made! Time to satisfy your cravings.
+            </p>
+
+            <!-- Winner Actions -->
+            <div class="flex flex-col gap-3">
+                <a id="maps-link" href="#" target="_blank" rel="noopener noreferrer" 
+                    class="w-full py-3 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg flex items-center justify-center space-x-2 transition-all">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    <span>Find Near Me on Google Maps</span>
+                </a>
+
+                <button id="modal-spin-again" class="w-full py-3 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-sm transition-all">
+                    Spin Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Box -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 bg-slate-800 text-slate-100 border border-slate-700 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-cyan-400"></i>
+        <span id="toast-msg" class="text-xs font-medium">Notification message</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="w-full border-t border-slate-800/60 py-4 text-center text-xs text-slate-500">
+        <p>Random Restaurant & Food Picker &copy; 2026. Bon Appétit!</p>
+    </footer>
+
+    <script>
+        // Default list of 8 authentic Thai Street Food Dishes
+        const DEFAULT_THAI_DISHES = [
+            { id: '1', name: 'Pad Kra Pao (Holy Basil Stir-fry)', enabled: true, emoji: '🍳' },
+            { id: '2', name: 'Pad Thai (Stir-fried Rice Noodles)', enabled: true, emoji: '🍜' },
+            { id: '3', name: 'Som Tum (Spicy Papaya Salad)', enabled: true, emoji: '🥗' },
+            { id: '4', name: 'Tom Yum Goong (Spicy Shrimp Soup)', enabled: true, emoji: '🍲' },
+            { id: '5', name: 'Khao Man Gai (Chicken Rice)', enabled: true, emoji: '🍗' },
+            { id: '6', name: 'Gaeng Keow Wan (Green Curry)', enabled: true, emoji: '🍛' },
+            { id: '7', name: 'Kuay Teow Reua (Boat Noodles)', enabled: true, emoji: '🥢' },
+            { id: '8', name: 'Khao Niew Mamuang (Mango Sticky Rice)', enabled: true, emoji: '🥭' }
+        ];
+
+        // Vibrant neon wheel color palette
+        const WHEEL_COLORS = [
+            '#8b5cf6', // Violet
+            '#06b6d4', // Cyan
+            '#10b981', // Emerald
+            '#f59e0b', // Amber
+            '#ec4899', // Pink
+            '#3b82f6', // Blue
+            '#f97316', // Orange
+            '#14b8a6', // Teal
+            '#a855f7', // Purple
+            '#eab308'  // Yellow
+        ];
+
+        // Food Emojis list for random auto assignment
+        const FOOD_EMOJIS = ['🍲', '🍜', '🍱', '🍳', '🥗', '🍗', '🍛', '🥢', '🥭', '🍕', '🍔', '🌮', '🍣', '🥙', '🧆', '🥟'];
+
+        // App State
+        let dishes = [];
+        let audioEnabled = true;
+        let isSpinning = false;
+        let currentRotation = 0; // in radians
+        let audioCtx = null;
+
+        // DOM Elements
+        const canvas = document.getElementById('wheel-canvas');
+        const ctx = canvas.getContext('2d');
+        const spinBtn = document.getElementById('spin-btn');
+        const quickPickBtn = document.getElementById('quick-pick-btn');
+        const dishList = document.getElementById('dish-list');
+        const addDishForm = document.getElementById('add-dish-form');
+        const dishInput = document.getElementById('dish-input');
+        const audioToggleBtn = document.getElementById('audio-toggle-btn');
+        const audioIcon = document.getElementById('audio-icon');
+        const audioStatusText = document.getElementById('audio-status-text');
+        const topResetBtn = document.getElementById('top-reset-btn');
+        const selectAllBtn = document.getElementById('select-all-btn');
+        const deselectAllBtn = document.getElementById('deselect-all-btn');
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        const activeCountBadge = document.getElementById('active-count-badge');
+        const totalCountBadge = document.getElementById('total-count-badge');
+
+        // Modal Elements
+        const winnerModal = document.getElementById('winner-modal');
+        const winnerTitle = document.getElementById('winner-title');
+        const winnerEmoji = document.getElementById('winner-emoji');
+        const mapsLink = document.getElementById('maps-link');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const modalSpinAgain = document.getElementById('modal-spin-again');
+
+        // Initialize Web Audio API Synthesizer (No external broken audio assets!)
+        function initAudioContext() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Play crisp tick woodblock sound during wheel rotation
+        function playTickSound() {
+            if (!audioEnabled) return;
+            try {
+                initAudioContext();
+                if (!audioCtx) return;
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.03);
+
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.03);
+            } catch (e) {
+                // Audio safely ignored if muted/blocked
+            }
+        }
+
+        // Play victory fanfare sound sequence on win
+        function playVictorySound() {
+            if (!audioEnabled) return;
+            try {
+                initAudioContext();
+                if (!audioCtx) return;
+
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.1);
+
+                    gain.gain.setValueAtTime(0, audioCtx.currentTime + idx * 0.1);
+                    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + idx * 0.1 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.1 + 0.4);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+
+                    osc.start(audioCtx.currentTime + idx * 0.1);
+                    osc.stop(audioCtx.currentTime + idx * 0.1 + 0.4);
+                });
+            } catch (e) {
+                // Audio safely ignored
+            }
+        }
+
+        // Local Storage State Management
+        function loadState() {
+            const stored = localStorage.getItem('restaurant_picker_dishes');
+            if (stored) {
+                try {
+                    dishes = JSON.parse(stored);
+                } catch (e) {
+                    dishes = [...DEFAULT_THAI_DISHES];
+                }
+            } else {
+                dishes = [...DEFAULT_THAI_DISHES];
+            }
+            renderDishList();
+            drawWheel();
+        }
+
+        function saveState() {
+            localStorage.setItem('restaurant_picker_dishes', JSON.stringify(dishes));
+            renderDishList();
+            drawWheel();
+        }
+
+        // Get active dishes list
+        function getActiveDishes() {
+            return dishes.filter(d => d.enabled);
+        }
+
+        // Draw Canvas Wheel
+        function drawWheel() {
+            const active = getActiveDishes();
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = width / 2 - 12;
+
+            ctx.clearRect(0, 0, width, height);
+
+            activeCountBadge.textContent = `${active.length} Active Options`;
+            totalCountBadge.textContent = `${dishes.length} Items`;
+
+            if (active.length === 0) {
+                // Empty Wheel State
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#1e293b';
+                ctx.fill();
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = 'bold 16px Outfit, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Please select at least 1 dish', centerX, centerY);
+                return;
+            }
+
+            const sliceAngle = (Math.PI * 2) / active.length;
+
+            active.forEach((dish, index) => {
+                const startAngle = currentRotation + index * sliceAngle;
+                const endAngle = startAngle + sliceAngle;
+                const color = WHEEL_COLORS[index % WHEEL_COLORS.length];
+
+                // Draw Slice Arc
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.closePath();
+
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Draw Text Label
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(startAngle + sliceAngle / 2);
+
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 14px Outfit, sans-serif';
+
+                // Truncate name if too long for wheel slice
+                let label = dish.name;
+                if (label.length > 22) {
+                    label = label.substring(0, 20) + '...';
+                }
+
+                // Add shadow for better text contrast
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+                ctx.shadowBlur = 4;
+                ctx.fillText(label, radius - 24, 0);
+
+                ctx.restore();
+            });
+
+            // Center Knob Cap
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 28, 0, Math.PI * 2);
+            ctx.fillStyle = '#0f172a';
+            ctx.fill();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Inner Knob Symbol
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 14px FontAwesome';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🍴', centerX, centerY);
+        }
+
+        // Spin Physics Logic
+        function spinWheel() {
+            const active = getActiveDishes();
+            if (active.length < 2) {
+                showToast('Please enable at least 2 options to spin!', 'warning');
+                return;
+            }
+            if (isSpinning) return;
+
+            initAudioContext();
+            isSpinning = true;
+            spinBtn.disabled = true;
+            quickPickBtn.disabled = true;
+
+            // Random rotation setup: 5 to 8 full spins + random target slice offset
+            const extraSpins = 5 + Math.random() * 3;
+            const totalTargetRotation = currentRotation + (extraSpins * Math.PI * 2) + (Math.random() * Math.PI * 2);
+            const duration = 4000; // 4 seconds total duration
+            const startTime = performance.now();
+            const startRotation = currentRotation;
+
+            let lastTickIndex = -1;
+
+            function animateSpin(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Easing cubic ease-out curve for deceleration
+                const easeOut = 1 - Math.pow(1 - progress, 4);
+
+                currentRotation = startRotation + (totalTargetRotation - startRotation) * easeOut;
+                drawWheel();
+
+                // Calculate current pointer slice index to trigger tick audio
+                const numSlices = active.length;
+                const sliceAngle = (Math.PI * 2) / numSlices;
+                
+                // Pointer is located at top (-PI/2)
+                const normalizedRotation = (currentRotation % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+                const pointerAngle = (Math.PI * 1.5 - normalizedRotation + Math.PI * 2) % (Math.PI * 2);
+                const currentSliceIndex = Math.floor(pointerAngle / sliceAngle) % numSlices;
+
+                if (currentSliceIndex !== lastTickIndex) {
+                    playTickSound();
+                    lastTickIndex = currentSliceIndex;
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    isSpinning = false;
+                    spinBtn.disabled = false;
+                    quickPickBtn.disabled = false;
+
+                    // Determine winning item
+                    const winner = active[currentSliceIndex];
+                    triggerVictory(winner);
+                }
+            }
+
+            requestAnimationFrame(animateSpin);
+        }
+
+        // Instant Quick Pick
+        function quickPick() {
+            const active = getActiveDishes();
+            if (active.length < 2) {
+                showToast('Please enable at least 2 options!', 'warning');
+                return;
+            }
+            if (isSpinning) return;
+
+            const randomIndex = Math.floor(Math.random() * active.length);
+            const winner = active[randomIndex];
+            triggerVictory(winner);
+        }
+
+        // Confetti Particles Engine
+        let confettiParticles = [];
+        let confettiAnimationId = null;
+
+        function launchConfetti() {
+            const confettiCanvas = document.getElementById('confetti-canvas');
+            const cCtx = confettiCanvas.getContext('2d');
+            
+            confettiCanvas.width = window.innerWidth;
+            confettiCanvas.height = window.innerHeight;
+
+            const colors = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
+            confettiParticles = [];
+
+            for (let i = 0; i < 120; i++) {
+                confettiParticles.push({
+                    x: confettiCanvas.width / 2,
+                    y: confettiCanvas.height / 2 + 50,
+                    vx: (Math.random() - 0.5) * 18,
+                    vy: (Math.random() - 0.8) * 18,
+                    size: Math.random() * 8 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    rotation: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 0.2,
+                    gravity: 0.25,
+                    opacity: 1
+                });
+            }
+
+            function updateConfetti() {
+                cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+
+                let alive = false;
+                confettiParticles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += p.gravity;
+                    p.rotation += p.vRot;
+                    p.opacity -= 0.008;
+
+                    if (p.opacity > 0) {
+                        alive = true;
+                        cCtx.save();
+                        cCtx.translate(p.x, p.y);
+                        cCtx.rotate(p.rotation);
+                        cCtx.globalAlpha = Math.max(0, p.opacity);
+                        cCtx.fillStyle = p.color;
+                        cCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                        cCtx.restore();
+                    }
+                });
+
+                if (alive) {
+                    confettiAnimationId = requestAnimationFrame(updateConfetti);
+                } else {
+                    cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+                }
+            }
+
+            if (confettiAnimationId) cancelAnimationFrame(confettiAnimationId);
+            updateConfetti();
+        }
+
+        // Trigger Victory Event
+        function triggerVictory(winner) {
+            playVictorySound();
+            launchConfetti();
+
+            winnerTitle.textContent = winner.name;
+            winnerEmoji.textContent = winner.emoji || '🍲';
+            
+            // Set Google Maps URL
+            const query = encodeURIComponent(`${winner.name} near me`);
+            mapsLink.href = `https://www.google.com/maps/search/${query}`;
+
+            winnerModal.classList.remove('hidden');
+        }
+
+        // Render Dish Management List
+        function renderDishList() {
+            dishList.innerHTML = '';
+
+            if (dishes.length === 0) {
+                dishList.innerHTML = `
+                    <li class="text-center py-6 text-xs text-slate-500">
+                        No dishes added yet. Type above to add your favorite food!
+                    </li>
+                `;
+                return;
+            }
+
+            dishes.forEach((dish) => {
+                const li = document.createElement('li');
+                li.className = `flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    dish.enabled 
+                        ? 'bg-slate-800/80 border-slate-700/80 text-slate-100' 
+                        : 'bg-slate-900/50 border-slate-800/50 text-slate-500'
+                }`;
+
+                li.innerHTML = `
+                    <div class="flex items-center space-x-3 flex-1 min-w-0 pr-2">
+                        <input type="checkbox" id="chk-${dish.id}" ${dish.enabled ? 'checked' : ''} 
+                            class="w-4 h-4 rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-cyan-500 focus:ring-offset-slate-900 cursor-pointer">
+                        
+                        <span class="text-base shrink-0">${dish.emoji || '🍲'}</span>
+                        
+                        <span id="label-${dish.id}" class="text-xs sm:text-sm font-semibold truncate ${dish.enabled ? '' : 'line-through text-slate-500'}">
+                            ${escapeHtml(dish.name)}
+                        </span>
+                        
+                        <input type="text" id="edit-input-${dish.id}" value="${escapeHtml(dish.name)}" 
+                            class="hidden text-xs sm:text-sm bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 w-full focus:outline-none focus:border-cyan-400">
+                    </div>
+
+                    <div class="flex items-center space-x-1 shrink-0">
+                        <button id="edit-btn-${dish.id}" title="Edit dish" class="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-cyan-400 transition-colors">
+                            <i class="fa-solid fa-pen text-xs"></i>
+                        </button>
+                        <button id="delete-btn-${dish.id}" title="Remove dish" class="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition-colors">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                    </div>
+                `;
+
+                dishList.appendChild(li);
+
+                // Checkbox toggle
+                document.getElementById(`chk-${dish.id}`).addEventListener('change', (e) => {
+                    dish.enabled = e.target.checked;
+                    saveState();
+                });
+
+                // Delete button
+                document.getElementById(`delete-btn-${dish.id}`).addEventListener('click', () => {
+                    dishes = dishes.filter(d => d.id !== dish.id);
+                    saveState();
+                    showToast('Dish removed', 'info');
+                });
+
+                // Inline Edit mode toggle
+                const editBtn = document.getElementById(`edit-btn-${dish.id}`);
+                const labelSpan = document.getElementById(`label-${dish.id}`);
+                const editInput = document.getElementById(`edit-input-${dish.id}`);
+
+                editBtn.addEventListener('click', () => {
+                    const isEditing = !editInput.classList.contains('hidden');
+                    if (isEditing) {
+                        // Save edit
+                        const newName = editInput.value.trim();
+                        if (newName) {
+                            dish.name = newName;
+                            saveState();
+                            showToast('Dish updated', 'success');
+                        }
+                    } else {
+                        // Enter edit mode
+                        labelSpan.classList.add('hidden');
+                        editInput.classList.remove('hidden');
+                        editInput.focus();
+                        editBtn.innerHTML = '<i class="fa-solid fa-check text-xs text-emerald-400"></i>';
+                    }
+                });
+
+                editInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        editBtn.click();
+                    }
+                });
+            });
+        }
+
+        // Helper function to safely escape HTML
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // Toast Notification System
+        let toastTimeout = null;
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-msg');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.textContent = message;
+
+            if (type === 'warning') {
+                toastIcon.className = 'fa-solid fa-triangle-exclamation text-amber-400';
+            } else if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-cyan-400';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Add custom dish form handler
+        addDishForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = dishInput.value.trim();
+            if (!text) return;
+
+            const randomEmoji = FOOD_EMOJIS[Math.floor(Math.random() * FOOD_EMOJIS.length)];
+            const newDish = {
+                id: Date.now().toString(),
+                name: text,
+                enabled: true,
+                emoji: randomEmoji
+            };
+
+            dishes.push(newDish);
+            dishInput.value = '';
+            saveState();
+            showToast('New dish added!', 'success');
+        });
+
+        // Quick Action Controls
+        selectAllBtn.addEventListener('click', () => {
+            dishes.forEach(d => d.enabled = true);
+            saveState();
+            showToast('All options selected', 'info');
+        });
+
+        deselectAllBtn.addEventListener('click', () => {
+            dishes.forEach(d => d.enabled = false);
+            saveState();
+            showToast('All options deselected', 'info');
+        });
+
+        clearAllBtn.addEventListener('click', () => {
+            if (dishes.length === 0) return;
+            dishes = [];
+            saveState();
+            showToast('Cleared all items', 'info');
+        });
+
+        topResetBtn.addEventListener('click', () => {
+            dishes = [...DEFAULT_THAI_DISHES];
+            saveState();
+            showToast('Reset to default Thai Street Food list', 'success');
+        });
+
+        // Audio Toggle
+        audioToggleBtn.addEventListener('click', () => {
+            audioEnabled = !audioEnabled;
+            if (audioEnabled) {
+                audioIcon.className = 'fa-solid fa-volume-high text-cyan-400 text-sm';
+                audioStatusText.textContent = 'Sound ON';
+                showToast('Audio sounds enabled', 'info');
+            } else {
+                audioIcon.className = 'fa-solid fa-volume-xmark text-slate-500 text-sm';
+                audioStatusText.textContent = 'Sound OFF';
+                showToast('Audio muted', 'info');
+            }
+        });
+
+        // Canvas Click to Spin
+        canvas.addEventListener('click', () => {
+            if (!isSpinning) spinWheel();
+        });
+
+        // Spin Buttons
+        spinBtn.addEventListener('click', spinWheel);
+        quickPickBtn.addEventListener('click', quickPick);
+
+        // Modal Controls
+        closeModalBtn.addEventListener('click', () => {
+            winnerModal.classList.add('hidden');
+        });
+
+        modalSpinAgain.addEventListener('click', () => {
+            winnerModal.classList.add('hidden');
+            spinWheel();
+        });
+
+        // Handle window resize for HiDPI sharpness
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = 440 * dpr;
+            canvas.height = 440 * dpr;
+            ctx.scale(dpr, dpr);
+            drawWheel();
+        }
+
+        // Initial Boot
+        window.addEventListener('load', () => {
+            resizeCanvas();
+            loadState();
+        });
+        window.addEventListener('resize', resizeCanvas);
+    </script>
+</body>
+</html>
